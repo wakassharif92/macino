@@ -11,7 +11,7 @@ final class LocalScreenShareController {
   })
 
   private var statusMessage = "Ready"
-  private let port: UInt16 = 8080
+  private let port: UInt16 = 41873
 
   private init() {}
 

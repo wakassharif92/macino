@@ -1,6 +1,14 @@
 #ifndef RUNNER_WIN32_WINDOW_H_
 #define RUNNER_WIN32_WINDOW_H_
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
 #include <windows.h>
 
 #include <functional>
@@ -94,6 +102,10 @@ class Win32Window {
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;
+
+  // hidden owner window used to keep this window off the taskbar while
+  // preserving normal caption buttons.
+  HWND owner_window_handle_ = nullptr;
 
   // window handle for hosted content.
   HWND child_content_ = nullptr;

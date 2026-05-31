@@ -1,16 +1,22 @@
-# mac_screen_share
+# Local Screen Share
 
-A new Flutter project.
+A Flutter desktop app for sharing the current computer screen to browsers on
+the same private Wi-Fi/LAN. macOS uses ScreenCaptureKit. Windows uses a native
+Win32/GDI+ capture path and serves the same local MJPEG viewer on port 8080.
 
-## Getting Started
+## Run
 
-This project is a starting point for a Flutter application.
+```sh
+flutter run -d macos
+flutter run -d windows
+```
 
-A few resources to get you started if this is your first Flutter project:
+On Windows, allow the app through Windows Defender Firewall when prompted so
+other devices on the LAN can open the viewer URL.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Build
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```sh
+flutter build macos
+flutter build windows
+```

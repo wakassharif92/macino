@@ -134,13 +134,22 @@ bool Win32Window::Create(const std::wstring& title,
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
   double scale_factor = dpi / 96.0;
 
-  HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+  owner_window_handle_ =
+      CreateWindowEx(0, window_class, L"", WS_POPUP, 0, 0, 0, 0, nullptr,
+                     nullptr, GetModuleHandle(nullptr), nullptr);
+  if (!owner_window_handle_) {
+    return false;
+  }
+
+  HWND window = CreateWindowEx(
+      0, window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
-      nullptr, nullptr, GetModuleHandle(nullptr), this);
+      owner_window_handle_, nullptr, GetModuleHandle(nullptr), this);
 
   if (!window) {
+    DestroyWindow(owner_window_handle_);
+    owner_window_handle_ = nullptr;
     return false;
   }
 
@@ -160,12 +169,15 @@ LRESULT CALLBACK Win32Window::WndProc(HWND const window,
                                       LPARAM const lparam) noexcept {
   if (message == WM_NCCREATE) {
     auto window_struct = reinterpret_cast<CREATESTRUCT*>(lparam);
-    SetWindowLongPtr(window, GWLP_USERDATA,
-                     reinterpret_cast<LONG_PTR>(window_struct->lpCreateParams));
-
-    auto that = static_cast<Win32Window*>(window_struct->lpCreateParams);
     EnableFullDpiSupportIfAvailable(window);
-    that->window_handle_ = window;
+    if (window_struct->lpCreateParams) {
+      SetWindowLongPtr(
+          window, GWLP_USERDATA,
+          reinterpret_cast<LONG_PTR>(window_struct->lpCreateParams));
+
+      auto that = static_cast<Win32Window*>(window_struct->lpCreateParams);
+      that->window_handle_ = window;
+    }
   } else if (Win32Window* that = GetThisFromHandle(window)) {
     return that->MessageHandler(window, message, wparam, lparam);
   }
@@ -227,6 +239,10 @@ void Win32Window::Destroy() {
   if (window_handle_) {
     DestroyWindow(window_handle_);
     window_handle_ = nullptr;
+  }
+  if (owner_window_handle_) {
+    DestroyWindow(owner_window_handle_);
+    owner_window_handle_ = nullptr;
   }
   if (g_active_window_count == 0) {
     WindowClassRegistrar::GetInstance()->UnregisterWindowClass();

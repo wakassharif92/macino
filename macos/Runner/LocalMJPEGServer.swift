@@ -8,7 +8,7 @@ enum LocalMJPEGServerError: LocalizedError {
   var errorDescription: String? {
     switch self {
     case .invalidPort:
-      return "Port 8080 is not available."
+      return "Port 41873 is not available."
     case .listenerFailed(let reason):
       return "Local server failed: \(reason)"
     }
@@ -248,7 +248,7 @@ final class LocalMJPEGServer {
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>Local Screen Share</title>
+      <title>Macino</title>
       <style>
         :root { color-scheme: dark; }
         * { box-sizing: border-box; }
@@ -300,7 +300,7 @@ final class LocalMJPEGServer {
     </head>
     <body>
       <header>
-        <strong>Local Screen Share</strong>
+        <strong>Macino</strong>
         <input id="password" type="password" placeholder="Password">
         <button id="connect">Connect</button>
         <span id="status" class="status">Idle</span>
