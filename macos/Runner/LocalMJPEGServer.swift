@@ -17,26 +17,36 @@ enum LocalMJPEGServerError: LocalizedError {
 
 final class LocalMJPEGServer {
   private let frameProvider: () -> Data?
+  private let controlHandler: ([String: Any]) throws -> Void
+  private let accessibilityTrustedProvider: () -> Bool
   private let queue = DispatchQueue(label: "local.screen.share.http")
   private var listener: NWListener?
   private var password = ""
   private var connections: [ObjectIdentifier: NWConnection] = [:]
+  private(set) var remoteControlEnabled = false
 
   var isRunning: Bool {
     listener != nil
   }
 
-  init(frameProvider: @escaping () -> Data?) {
+  init(
+    frameProvider: @escaping () -> Data?,
+    controlHandler: @escaping ([String: Any]) throws -> Void,
+    accessibilityTrustedProvider: @escaping () -> Bool
+  ) {
     self.frameProvider = frameProvider
+    self.controlHandler = controlHandler
+    self.accessibilityTrustedProvider = accessibilityTrustedProvider
   }
 
-  func start(port: UInt16, password: String) throws {
+  func start(port: UInt16, password: String, remoteControlEnabled: Bool) throws {
     if isRunning { return }
     guard let nwPort = NWEndpoint.Port(rawValue: port) else {
       throw LocalMJPEGServerError.invalidPort
     }
 
     self.password = password
+    self.remoteControlEnabled = remoteControlEnabled
 
     let parameters = NWParameters.tcp
     parameters.allowLocalEndpointReuse = true
@@ -57,6 +67,7 @@ final class LocalMJPEGServer {
   func stop() {
     listener?.cancel()
     listener = nil
+    remoteControlEnabled = false
     connections.values.forEach { $0.cancel() }
     connections.removeAll()
   }
@@ -81,7 +92,7 @@ final class LocalMJPEGServer {
     readRequest(from: connection)
   }
 
-  private func readRequest(from connection: NWConnection) {
+  private func readRequest(from connection: NWConnection, buffer: Data = Data()) {
     connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, _, _, error in
       guard let self else { return }
       if error != nil {
@@ -89,7 +100,7 @@ final class LocalMJPEGServer {
         return
       }
 
-      guard let data, let request = String(data: data, encoding: .utf8) else {
+      guard let data else {
         self.sendResponse(
           connection,
           status: "400 Bad Request",
@@ -99,33 +110,119 @@ final class LocalMJPEGServer {
         return
       }
 
-      self.route(request: request, connection: connection)
+      var nextBuffer = buffer
+      nextBuffer.append(data)
+
+      guard nextBuffer.count < 65536 else {
+        self.sendResponse(
+          connection,
+          status: "413 Payload Too Large",
+          contentType: "text/plain",
+          body: Data("Payload too large".utf8)
+        )
+        return
+      }
+
+      if self.isCompleteHTTPRequest(nextBuffer) {
+        self.route(requestData: nextBuffer, connection: connection)
+      } else {
+        self.readRequest(from: connection, buffer: nextBuffer)
+      }
     }
   }
 
-  private func route(request: String, connection: NWConnection) {
-    let firstLine = request.components(separatedBy: "\r\n").first ?? ""
+  private func route(requestData: Data, connection: NWConnection) {
+    guard let headerEnd = headerEndRange(in: requestData),
+          let headers = String(data: Data(requestData[..<headerEnd.lowerBound]), encoding: .utf8) else {
+      sendResponse(connection, status: "400 Bad Request", contentType: "text/plain", body: Data("Bad request".utf8))
+      return
+    }
+
+    let firstLine = headers.components(separatedBy: "\r\n").first ?? ""
     let parts = firstLine.split(separator: " ")
     guard parts.count >= 2 else {
       sendResponse(connection, status: "400 Bad Request", contentType: "text/plain", body: Data("Bad request".utf8))
       return
     }
 
+    let method = String(parts[0])
     let target = String(parts[1])
     let path = target.components(separatedBy: "?").first ?? "/"
 
     switch path {
     case "/":
       sendResponse(connection, status: "200 OK", contentType: "text/html; charset=utf-8", body: Data(viewerHTML.utf8))
+    case "/config":
+      guard isAuthorized(target: target) else {
+        sendResponse(connection, status: "401 Unauthorized", contentType: "application/json", body: Data("{\"ok\":false}".utf8))
+        return
+      }
+      let body = #"{"ok":true,"remoteControlEnabled":\#(remoteControlEnabled),"accessibilityTrusted":\#(accessibilityTrustedProvider())}"#
+      sendResponse(connection, status: "200 OK", contentType: "application/json", body: Data(body.utf8))
     case "/stream":
       guard isAuthorized(target: target) else {
         sendResponse(connection, status: "401 Unauthorized", contentType: "text/plain", body: Data("Unauthorized".utf8))
         return
       }
       sendMJPEGStream(to: connection)
+    case "/control":
+      guard method == "POST" else {
+        sendResponse(connection, status: "405 Method Not Allowed", contentType: "text/plain", body: Data("Method not allowed".utf8))
+        return
+      }
+      handleControlRequest(requestData: requestData, target: target, connection: connection)
     default:
       sendResponse(connection, status: "404 Not Found", contentType: "text/plain", body: Data("Not found".utf8))
     }
+  }
+
+  private func handleControlRequest(requestData: Data, target: String, connection: NWConnection) {
+    guard remoteControlEnabled else {
+      sendResponse(connection, status: "403 Forbidden", contentType: "text/plain", body: Data("Remote control disabled".utf8))
+      return
+    }
+
+    guard isAuthorized(target: target) else {
+      sendResponse(connection, status: "401 Unauthorized", contentType: "text/plain", body: Data("Unauthorized".utf8))
+      return
+    }
+
+    guard let headerEnd = headerEndRange(in: requestData),
+          let json = try? JSONSerialization.jsonObject(with: Data(requestData[headerEnd.upperBound...])),
+          let event = json as? [String: Any] else {
+      sendResponse(connection, status: "400 Bad Request", contentType: "text/plain", body: Data("Bad control event".utf8))
+      return
+    }
+
+    do {
+      try controlHandler(event)
+      sendResponse(connection, status: "204 No Content", contentType: "text/plain", body: Data())
+    } catch {
+      sendResponse(connection, status: "403 Forbidden", contentType: "text/plain", body: Data(error.localizedDescription.utf8))
+    }
+  }
+
+  private func isCompleteHTTPRequest(_ data: Data) -> Bool {
+    guard let headerEnd = headerEndRange(in: data) else { return false }
+    let headerData = Data(data[..<headerEnd.lowerBound])
+    let headers = String(data: headerData, encoding: .utf8) ?? ""
+    let contentLength = contentLength(from: headers)
+    return data.count >= headerEnd.upperBound + contentLength
+  }
+
+  private func headerEndRange(in data: Data) -> Range<Data.Index>? {
+    data.range(of: Data("\r\n\r\n".utf8))
+  }
+
+  private func contentLength(from headers: String) -> Int {
+    for line in headers.components(separatedBy: "\r\n") {
+      let parts = line.split(separator: ":", maxSplits: 1).map(String.init)
+      guard parts.count == 2, parts[0].lowercased() == "content-length" else {
+        continue
+      }
+      return Int(parts[1].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    }
+    return 0
   }
 
   private func sendResponse(
@@ -296,6 +393,7 @@ final class LocalMJPEGServer {
           object-fit: contain;
         }
         .status { margin-left: auto; color: #b8c6c1; font-size: 14px; }
+        .control-on { color: #9ce8d4; }
       </style>
     </head>
     <body>
@@ -313,12 +411,112 @@ final class LocalMJPEGServer {
         const status = document.getElementById('status');
         const password = document.getElementById('password');
         const connect = document.getElementById('connect');
+        let controlEnabled = false;
+        let currentPassword = '';
+        let lastMouseMoveAt = { value: 0 };
 
-        function start() {
-          const token = encodeURIComponent(password.value);
-          img.src = '/stream?password=' + token + '&t=' + Date.now();
-          status.textContent = 'Connected';
+        function authQuery() {
+          return 'password=' + encodeURIComponent(currentPassword);
         }
+
+        async function start() {
+          currentPassword = password.value;
+          try {
+            const config = await fetch('/config?' + authQuery() + '&t=' + Date.now());
+            if (!config.ok) {
+              status.textContent = 'Unauthorized';
+              return;
+            }
+            const json = await config.json();
+            controlEnabled = json.remoteControlEnabled === true;
+            if (controlEnabled) {
+              status.textContent = 'Connected · click screen to control';
+            } else if (json.accessibilityTrusted !== true) {
+              status.textContent = 'View only · enable Mac Accessibility permission';
+            } else {
+              status.textContent = 'Connected · View only';
+            }
+            status.className = controlEnabled ? 'status control-on' : 'status';
+            img.src = '/stream?' + authQuery() + '&t=' + Date.now();
+          } catch (_) {
+            status.textContent = 'Connection failed';
+          }
+        }
+
+        function normalizedPoint(event) {
+          const rect = img.getBoundingClientRect();
+          return {
+            x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+            y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+          };
+        }
+
+        function sendControl(payload) {
+          if (!controlEnabled) return;
+          fetch('/control?' + authQuery(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(payload),
+            keepalive: true
+          }).then(response => {
+            if (!response.ok) status.textContent = 'Control blocked by Mac permissions';
+          }).catch(() => {
+            status.textContent = 'Control connection failed';
+          });
+        }
+
+        img.tabIndex = 0;
+        img.addEventListener('mousemove', event => {
+          if (!controlEnabled) return;
+          const now = performance.now();
+          if (now - lastMouseMoveAt.value < 35) return;
+          lastMouseMoveAt.value = now;
+          sendControl({ type: 'mouseMove', ...normalizedPoint(event) });
+        });
+        img.addEventListener('mousedown', event => {
+          if (!controlEnabled) return;
+          event.preventDefault();
+          img.focus();
+          status.textContent = 'Control active';
+          sendControl({ type: 'mouseDown', button: event.button, ...normalizedPoint(event) });
+        });
+        img.addEventListener('mouseup', event => {
+          if (!controlEnabled) return;
+          event.preventDefault();
+          sendControl({ type: 'mouseUp', button: event.button, ...normalizedPoint(event) });
+        });
+        img.addEventListener('wheel', event => {
+          if (!controlEnabled) return;
+          event.preventDefault();
+          sendControl({ type: 'wheel', deltaY: event.deltaY });
+        }, { passive: false });
+        img.addEventListener('contextmenu', event => {
+          if (controlEnabled) event.preventDefault();
+        });
+        window.addEventListener('keydown', event => {
+          if (!controlEnabled || document.activeElement !== img) return;
+          event.preventDefault();
+          sendControl({
+            type: 'keyDown',
+            code: event.code,
+            shiftKey: event.shiftKey,
+            ctrlKey: event.ctrlKey,
+            altKey: event.altKey,
+            metaKey: event.metaKey
+          });
+        });
+        window.addEventListener('keyup', event => {
+          if (!controlEnabled || document.activeElement !== img) return;
+          event.preventDefault();
+          sendControl({
+            type: 'keyUp',
+            code: event.code,
+            shiftKey: event.shiftKey,
+            ctrlKey: event.ctrlKey,
+            altKey: event.altKey,
+            metaKey: event.metaKey
+          });
+        });
 
         connect.addEventListener('click', start);
         password.addEventListener('keydown', event => {

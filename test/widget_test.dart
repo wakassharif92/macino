@@ -10,6 +10,9 @@ void main() {
     expect(find.text('Macino'), findsOneWidget);
     expect(find.text('Start Sharing'), findsOneWidget);
     expect(find.text('Stop Sharing'), findsOneWidget);
+    expect(
+        find.text('Allow remote mouse and keyboard control'), findsOneWidget);
+    expect(find.text('Open Accessibility Settings'), findsOneWidget);
     expect(find.byIcon(Icons.copy), findsOneWidget);
   });
 }

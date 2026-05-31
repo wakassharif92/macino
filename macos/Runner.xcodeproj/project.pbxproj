@@ -29,6 +29,7 @@
 		33F100012044BFA00003C045 /* LocalScreenShareController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33F100002044BFA00003C045 /* LocalScreenShareController.swift */; };
 		33F100032044BFA00003C045 /* ScreenCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33F100022044BFA00003C045 /* ScreenCaptureService.swift */; };
 		33F100052044BFA00003C045 /* LocalMJPEGServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33F100042044BFA00003C045 /* LocalMJPEGServer.swift */; };
+		33F100072044BFA00003C045 /* RemoteControlService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33F100062044BFA00003C045 /* RemoteControlService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -72,6 +73,7 @@
 		33F100002044BFA00003C045 /* LocalScreenShareController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalScreenShareController.swift; sourceTree = "<group>"; };
 		33F100022044BFA00003C045 /* ScreenCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCaptureService.swift; sourceTree = "<group>"; };
 		33F100042044BFA00003C045 /* LocalMJPEGServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMJPEGServer.swift; sourceTree = "<group>"; };
+		33F100062044BFA00003C045 /* RemoteControlService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteControlService.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -146,6 +148,7 @@
 				33F100002044BFA00003C045 /* LocalScreenShareController.swift */,
 				33F100022044BFA00003C045 /* ScreenCaptureService.swift */,
 				33F100042044BFA00003C045 /* LocalMJPEGServer.swift */,
+				33F100062044BFA00003C045 /* RemoteControlService.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -262,6 +265,7 @@
 		};
 		33CC111E2044C6BF0003C045 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -291,6 +295,7 @@
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				33F100032044BFA00003C045 /* ScreenCaptureService.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
+				33F100072044BFA00003C045 /* RemoteControlService.swift in Sources */,
 				33F100052044BFA00003C045 /* LocalMJPEGServer.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);

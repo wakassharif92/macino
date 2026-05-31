@@ -46,6 +46,9 @@ class _ShareHomePageState extends State<ShareHomePage> {
 
   bool _isSharing = false;
   bool _isBusy = false;
+  bool _allowRemoteControl = false;
+  bool _remoteControlActive = false;
+  bool _accessibilityTrusted = false;
   String _localIP = 'Checking...';
   String _message = 'Ready';
 
@@ -85,6 +88,8 @@ class _ShareHomePageState extends State<ShareHomePage> {
       setState(() {
         _localIP = (results[0] as String?) ?? '';
         _isSharing = status['isSharing'] == true;
+        _remoteControlActive = status['remoteControlEnabled'] == true;
+        _accessibilityTrusted = status['accessibilityTrusted'] == true;
         if (!silent) {
           _message = (status['message'] as String?) ?? 'Ready';
         } else if (_isSharing) {
@@ -110,11 +115,14 @@ class _ShareHomePageState extends State<ShareHomePage> {
         'startSharing',
         <String, dynamic>{
           'password': _passwordController.text.trim(),
+          'allowRemoteControl': _allowRemoteControl,
         },
       );
       if (!mounted) return;
       setState(() {
         _isSharing = status?['isSharing'] == true;
+        _remoteControlActive = status?['remoteControlEnabled'] == true;
+        _accessibilityTrusted = status?['accessibilityTrusted'] == true;
         _message = (status?['message'] as String?) ?? 'Sharing started';
       });
       await _refreshStatus(silent: true);
@@ -143,6 +151,8 @@ class _ShareHomePageState extends State<ShareHomePage> {
       if (!mounted) return;
       setState(() {
         _isSharing = status?['isSharing'] == true;
+        _remoteControlActive = status?['remoteControlEnabled'] == true;
+        _accessibilityTrusted = status?['accessibilityTrusted'] == true;
         _message = (status?['message'] as String?) ?? 'Stopped';
       });
     } on PlatformException catch (error) {
@@ -168,6 +178,17 @@ class _ShareHomePageState extends State<ShareHomePage> {
   Future<void> _minimizeWindow() async {
     try {
       await _channel.invokeMethod<void>('minimizeWindow');
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _message = error.message ?? error.code;
+      });
+    }
+  }
+
+  Future<void> _openAccessibilitySettings() async {
+    try {
+      await _channel.invokeMethod<void>('openAccessibilitySettings');
     } on PlatformException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -225,8 +246,7 @@ class _ShareHomePageState extends State<ShareHomePage> {
                             children: [
                               Text(
                                 'Macino',
-                                style:
-                                    theme.textTheme.headlineSmall?.copyWith(
+                                style: theme.textTheme.headlineSmall?.copyWith(
                                   color: const Color(0xFF111827),
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -257,9 +277,7 @@ class _ShareHomePageState extends State<ShareHomePage> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                _isSharing
-                                    ? Icons.sensors
-                                    : Icons.sensors_off,
+                                _isSharing ? Icons.sensors : Icons.sensors_off,
                                 size: 18,
                                 color: statusColor,
                               ),
@@ -317,178 +335,236 @@ class _ShareHomePageState extends State<ShareHomePage> {
                                   ),
                                 ],
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        width: 42,
-                                        height: 42,
-                                        decoration: BoxDecoration(
-                                          color: statusColor.withOpacity(0.12),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        child: Icon(
-                                          _isSharing
-                                              ? Icons.desktop_windows
-                                              : Icons.desktop_access_disabled,
-                                          color: statusColor,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              _isSharing
-                                                  ? 'Screen is sharing'
-                                                  : 'Ready to share',
-                                              style: theme
-                                                  .textTheme.titleLarge
-                                                  ?.copyWith(
-                                                color:
-                                                    const Color(0xFF111827),
-                                                fontWeight: FontWeight.w800,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 3),
-                                            Text(
-                                              _message,
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: theme
-                                                  .textTheme.bodyMedium
-                                                  ?.copyWith(
-                                                color:
-                                                    const Color(0xFF65716B),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 28),
-                                  TextField(
-                                    controller: _passwordController,
-                                    enabled: !_isSharing && !_isBusy,
-                                    obscureText: true,
-                                    decoration: InputDecoration(
-                                      filled: true,
-                                      fillColor: const Color(0xFFF7F9F6),
-                                      labelText: 'Viewer password',
-                                      hintText: 'Optional access code',
-                                      prefixIcon:
-                                          const Icon(Icons.lock_outline),
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: const BorderSide(
-                                          color: Color(0xFFD7DED8),
-                                        ),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: const BorderSide(
-                                          color: Color(0xFFD7DED8),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 22),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: FilledButton.icon(
-                                          onPressed: _isBusy || _isSharing
-                                              ? null
-                                              : _startSharing,
-                                          icon: _isBusy && !_isSharing
-                                              ? const SizedBox(
-                                                  width: 18,
-                                                  height: 18,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                  ),
-                                                )
-                                              : const Icon(Icons.play_arrow),
-                                          label:
-                                              const Text('Start Sharing'),
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor:
-                                                const Color(0xFF167A68),
-                                            foregroundColor: Colors.white,
-                                            disabledBackgroundColor:
-                                                const Color(0xFFE1E6E2),
-                                            minimumSize:
-                                                const Size.fromHeight(48),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: OutlinedButton.icon(
-                                          onPressed: _isBusy || !_isSharing
-                                              ? null
-                                              : _stopSharing,
-                                          icon: const Icon(Icons.stop),
-                                          label: const Text('Stop Sharing'),
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor:
-                                                const Color(0xFF9F2D35),
-                                            side: const BorderSide(
-                                              color: Color(0xFFD8B7B9),
-                                            ),
-                                            minimumSize:
-                                                const Size.fromHeight(48),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const Spacer(),
-                                  Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFF4F7F5),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: const Color(0xFFDDE5DF),
-                                      ),
-                                    ),
-                                    child: Row(
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
                                       children: [
-                                        const Icon(
-                                          Icons.shield_outlined,
-                                          color: Color(0xFF5D6B64),
+                                        Container(
+                                          width: 42,
+                                          height: 42,
+                                          decoration: BoxDecoration(
+                                            color:
+                                                statusColor.withOpacity(0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                          child: Icon(
+                                            _isSharing
+                                                ? Icons.desktop_windows
+                                                : Icons.desktop_access_disabled,
+                                            color: statusColor,
+                                          ),
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
-                                          child: Text(
-                                            'Port 41873 accepts loopback and private LAN clients only.',
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(
-                                              color: const Color(0xFF5D6B64),
-                                              fontWeight: FontWeight.w600,
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                _isSharing
+                                                    ? 'Screen is sharing'
+                                                    : 'Ready to share',
+                                                style: theme
+                                                    .textTheme.titleLarge
+                                                    ?.copyWith(
+                                                  color:
+                                                      const Color(0xFF111827),
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                _message,
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: theme
+                                                    .textTheme.bodyMedium
+                                                    ?.copyWith(
+                                                  color:
+                                                      const Color(0xFF65716B),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 28),
+                                    TextField(
+                                      controller: _passwordController,
+                                      enabled: !_isSharing && !_isBusy,
+                                      obscureText: true,
+                                      decoration: InputDecoration(
+                                        filled: true,
+                                        fillColor: const Color(0xFFF7F9F6),
+                                        labelText: 'Viewer password',
+                                        hintText: 'Optional access code',
+                                        prefixIcon:
+                                            const Icon(Icons.lock_outline),
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          borderSide: const BorderSide(
+                                            color: Color(0xFFD7DED8),
+                                          ),
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          borderSide: const BorderSide(
+                                            color: Color(0xFFD7DED8),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF7F9F6),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: const Color(0xFFD7DED8),
+                                        ),
+                                      ),
+                                      child: CheckboxListTile(
+                                        value: _allowRemoteControl,
+                                        onChanged: _isSharing || _isBusy
+                                            ? null
+                                            : (value) {
+                                                setState(() {
+                                                  _allowRemoteControl =
+                                                      value ?? false;
+                                                });
+                                              },
+                                        controlAffinity:
+                                            ListTileControlAffinity.leading,
+                                        secondary: Icon(
+                                          _allowRemoteControl
+                                              ? Icons.keyboard_alt_outlined
+                                              : Icons.visibility_outlined,
+                                          color: const Color(0xFF167A68),
+                                        ),
+                                        title: const Text(
+                                          'Allow remote mouse and keyboard control',
+                                        ),
+                                        subtitle: const Text(
+                                          'Requires macOS Accessibility permission and stays LAN/password gated.',
+                                        ),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: TextButton.icon(
+                                        onPressed: _openAccessibilitySettings,
+                                        icon: const Icon(
+                                          Icons.open_in_new,
+                                          size: 18,
+                                        ),
+                                        label: const Text(
+                                          'Open Accessibility Settings',
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 22),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: FilledButton.icon(
+                                            onPressed: _isBusy || _isSharing
+                                                ? null
+                                                : _startSharing,
+                                            icon: _isBusy && !_isSharing
+                                                ? const SizedBox(
+                                                    width: 18,
+                                                    height: 18,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                                  )
+                                                : const Icon(Icons.play_arrow),
+                                            label: const Text('Start Sharing'),
+                                            style: FilledButton.styleFrom(
+                                              backgroundColor:
+                                                  const Color(0xFF167A68),
+                                              foregroundColor: Colors.white,
+                                              disabledBackgroundColor:
+                                                  const Color(0xFFE1E6E2),
+                                              minimumSize:
+                                                  const Size.fromHeight(48),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: OutlinedButton.icon(
+                                            onPressed: _isBusy || !_isSharing
+                                                ? null
+                                                : _stopSharing,
+                                            icon: const Icon(Icons.stop),
+                                            label: const Text('Stop Sharing'),
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor:
+                                                  const Color(0xFF9F2D35),
+                                              side: const BorderSide(
+                                                color: Color(0xFFD8B7B9),
+                                              ),
+                                              minimumSize:
+                                                  const Size.fromHeight(48),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
                                             ),
                                           ),
                                         ),
                                       ],
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(height: 24),
+                                    Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF4F7F5),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: const Color(0xFFDDE5DF),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.shield_outlined,
+                                            color: Color(0xFF5D6B64),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Text(
+                                              'Port 41873 accepts loopback and private LAN clients only.',
+                                              style: theme.textTheme.bodySmall
+                                                  ?.copyWith(
+                                                color: const Color(0xFF5D6B64),
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -511,99 +587,121 @@ class _ShareHomePageState extends State<ShareHomePage> {
                                   ),
                                 ],
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        width: 40,
-                                        height: 40,
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFF253344),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          width: 40,
+                                          height: 40,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF253344),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                          child: const Icon(
+                                            Icons.link,
+                                            color: Color(0xFF9CE8D4),
+                                          ),
                                         ),
-                                        child: const Icon(
-                                          Icons.link,
-                                          color: Color(0xFF9CE8D4),
+                                        const SizedBox(width: 12),
+                                        Text(
+                                          'Viewer Link',
+                                          style: theme.textTheme.titleMedium
+                                              ?.copyWith(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 22),
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF182231),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: const Color(0xFF2D3A4A),
                                         ),
                                       ),
-                                      const SizedBox(width: 12),
-                                      Text(
-                                        'Viewer Link',
+                                      child: SelectableText(
+                                        _localUrl,
                                         style: theme.textTheme.titleMedium
                                             ?.copyWith(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 22),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF182231),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: const Color(0xFF2D3A4A),
-                                      ),
-                                    ),
-                                    child: SelectableText(
-                                      _localUrl,
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(
-                                        color: const Color(0xFFEFFCF8),
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: FilledButton.icon(
-                                      onPressed: _copyUrl,
-                                      icon: const Icon(Icons.copy),
-                                      label: const Text('Copy Link'),
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor:
-                                            const Color(0xFF9CE8D4),
-                                        foregroundColor:
-                                            const Color(0xFF0D1B22),
-                                        minimumSize:
-                                            const Size.fromHeight(46),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
+                                          color: const Color(0xFFEFFCF8),
+                                          fontWeight: FontWeight.w700,
                                         ),
                                       ),
                                     ),
-                                  ),
-                                  const Spacer(),
-                                  Divider(
-                                    color: Colors.white.withOpacity(0.12),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  _InfoRow(
-                                    icon: Icons.router_outlined,
-                                    label: 'Local IP',
-                                    value: _localIP,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  const _InfoRow(
-                                    icon: Icons.lan_outlined,
-                                    label: 'Network',
-                                    value: 'Private LAN',
-                                  ),
-                                  const SizedBox(height: 12),
-                                  const _InfoRow(
-                                    icon: Icons.http,
-                                    label: 'Port',
-                                    value: '41873',
-                                  ),
-                                ],
+                                    const SizedBox(height: 14),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: FilledButton.icon(
+                                        onPressed: _copyUrl,
+                                        icon: const Icon(Icons.copy),
+                                        label: const Text('Copy Link'),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor:
+                                              const Color(0xFF9CE8D4),
+                                          foregroundColor:
+                                              const Color(0xFF0D1B22),
+                                          minimumSize:
+                                              const Size.fromHeight(46),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 24),
+                                    Divider(
+                                      color: Colors.white.withOpacity(0.12),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _InfoRow(
+                                      icon: _remoteControlActive
+                                          ? Icons.keyboard_alt_outlined
+                                          : Icons.visibility_outlined,
+                                      label: 'Control',
+                                      value: _remoteControlActive
+                                          ? 'Enabled'
+                                          : 'View only',
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _InfoRow(
+                                      icon: _accessibilityTrusted
+                                          ? Icons.check_circle_outline
+                                          : Icons.error_outline,
+                                      label: 'Accessibility',
+                                      value: _accessibilityTrusted
+                                          ? 'Allowed'
+                                          : 'Needed',
+                                    ),
+                                    const SizedBox(height: 12),
+                                    _InfoRow(
+                                      icon: Icons.router_outlined,
+                                      label: 'Local IP',
+                                      value: _localIP,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const _InfoRow(
+                                      icon: Icons.lan_outlined,
+                                      label: 'Network',
+                                      value: 'Private LAN',
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const _InfoRow(
+                                      icon: Icons.http,
+                                      label: 'Port',
+                                      value: '41873',
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),

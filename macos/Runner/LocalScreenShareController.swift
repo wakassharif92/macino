@@ -6,8 +6,13 @@ final class LocalScreenShareController {
   static let shared = LocalScreenShareController()
 
   private let capture = ScreenCaptureService()
+  private let remoteControl = RemoteControlService()
   private lazy var server = LocalMJPEGServer(frameProvider: { [weak self] in
     self?.capture.latestJPEG
+  }, controlHandler: { [weak self] event in
+    try self?.remoteControl.handle(event)
+  }, accessibilityTrustedProvider: { [weak self] in
+    self?.remoteControl.isTrusted ?? false
   })
 
   private var statusMessage = "Ready"
@@ -34,18 +39,29 @@ final class LocalScreenShareController {
       case "startSharing":
         let args = call.arguments as? [String: Any]
         let password = (args?["password"] as? String) ?? ""
-        self.startSharing(password: password, result: result)
+        let allowRemoteControl = (args?["allowRemoteControl"] as? Bool) ?? false
+        self.startSharing(
+          password: password,
+          allowRemoteControl: allowRemoteControl,
+          result: result
+        )
       case "stopSharing":
         self.stopSharing(result: result)
       case "getStatus":
         result(self.statusPayload())
+      case "openAccessibilitySettings":
+        self.openAccessibilitySettings(result: result)
       default:
         result(FlutterMethodNotImplemented)
       }
     }
   }
 
-  private func startSharing(password: String, result: @escaping FlutterResult) {
+  private func startSharing(
+    password: String,
+    allowRemoteControl: Bool,
+    result: @escaping FlutterResult
+  ) {
     if isSharing {
       result(statusPayload(message: "Already sharing"))
       return
@@ -53,9 +69,19 @@ final class LocalScreenShareController {
 
     Task {
       do {
+        if allowRemoteControl, !remoteControl.requestPermissionIfNeeded() {
+          throw RemoteControlServiceError.accessibilityPermissionRequired
+        }
+
         try await capture.start()
-        try server.start(port: port, password: password)
-        statusMessage = "Sharing at \(viewerURL)"
+        try server.start(
+          port: port,
+          password: password,
+          remoteControlEnabled: allowRemoteControl && remoteControl.isTrusted
+        )
+        statusMessage = server.remoteControlEnabled
+          ? "Sharing at \(viewerURL) with remote control enabled"
+          : "Sharing at \(viewerURL)"
         let payload = statusPayload()
         DispatchQueue.main.async {
           result(payload)
@@ -83,6 +109,27 @@ final class LocalScreenShareController {
     result(statusPayload())
   }
 
+  private func openAccessibilitySettings(result: FlutterResult) {
+    let urls = [
+      "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+      "x-apple.systempreferences:com.apple.Settings.PrivacySecurity.extension?Privacy_Accessibility"
+    ]
+
+    for value in urls {
+      guard let url = URL(string: value) else { continue }
+      if NSWorkspace.shared.open(url) {
+        result(nil)
+        return
+      }
+    }
+
+    result(FlutterError(
+      code: "OPEN_SETTINGS_FAILED",
+      message: "Could not open Accessibility settings.",
+      details: nil
+    ))
+  }
+
   private var viewerURL: String {
     "http://\(localIPAddress() ?? "127.0.0.1"):\(port)"
   }
@@ -90,6 +137,8 @@ final class LocalScreenShareController {
   private func statusPayload(message: String? = nil) -> [String: Any] {
     [
       "isSharing": isSharing,
+      "remoteControlEnabled": server.remoteControlEnabled,
+      "accessibilityTrusted": remoteControl.isTrusted,
       "message": message ?? statusMessage,
       "url": viewerURL,
       "port": port
